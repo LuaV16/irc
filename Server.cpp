@@ -1,4 +1,5 @@
 #include "Server.hpp"
+#include "Client.hpp"
 
 Server::Server(int port, const std::string& password): port(port), password(password)
 {
@@ -53,10 +54,29 @@ Server::~Server()
 
 void Server::acceptNewConnection()
 {
+    Client client;
     int clientFd;
     sockaddr_in clientAddress = {};
+    struct pollfd pollFd;
+    socklen_t clientAddressLen = sizeof(clientAddress);
 
-    clientFd = accept(serverSocket, (struct sockaddr *) &clientAddress, (socklen_t *)sizeof(clientAddress));
+    clientFd = accept(serverSocket, (struct sockaddr *) &clientAddress, &clientAddressLen);
+    if (clientFd == -1)
+        throw std::runtime_error("Failed to accept new connection");
+
+    if (fcntl(clientFd, F_SETFL, O_NONBLOCK) == -1) // All connections are set to non-blocking
+        throw std::runtime_error("Failed to set client socket to non-blocking mode");
+
+    pollFd.fd = clientFd; // Set the file descriptor to the client socket
+    pollFd.events = POLLIN; // Set the events to listen for incoming data
+    pollFd.revents = 0; // Initialize the returned events to 0
+
+    pollFds.push_back(pollFd); // Add the client socket to the vector of poll file descriptors
+
+    client.setFd(clientFd);
+
+    std::cout << "New client connected: " << clientFd << std::endl;
+
 }
 
 void Server::runServer()
@@ -66,14 +86,14 @@ void Server::runServer()
         if (poll(&pollFds[0], pollFds.size(), -1) == -1)
             throw std::runtime_error("Poll failed");
 
-        for (int i = 0; i < pollFds.size(); i++)
+        for (int i = 0; i < int(pollFds.size()); i++)
         {
             if (pollFds[i].revents & POLLIN)
             {
                 if (pollFds[i].fd == serverSocket) // There's a new incoming connection on the server socket
                     acceptNewConnection(); // Accept the new connection
-                else // There's data to read from an existing client socket
-                    handleClientData(pollFds[i].fd); // Handle the data from the client
+                // else // There's data to read from an existing client socket
+                    // handleClientData(pollFds[i].fd); // Handle the data from the client
             }
         }
     }

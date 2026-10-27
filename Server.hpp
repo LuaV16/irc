@@ -9,6 +9,7 @@
 # include <fcntl.h> // For fcntl function
 # include <unistd.h>
 # include <vector>
+# include <iostream>
 
 class Server {
     public:
