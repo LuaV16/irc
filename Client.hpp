@@ -1,6 +1,9 @@
 #ifndef CLIENT_HPP
 # define CLIENT_HPP
 
+# include <vector>
+# include <poll.h>
+
 class Client {
     public:
         Client();

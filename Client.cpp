@@ -1,6 +1,6 @@
 #include "Client.hpp"
 
-Client::Client() {}
+Client::Client() : fd(-1) {}
 
 Client::~Client() {}
 
