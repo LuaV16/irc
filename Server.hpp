@@ -14,6 +14,8 @@
 # include <iostream>
 # include <csignal>
 # include <cerrno>
+# include <stdlib.h>
+
 
 # define GRE "\033[1;32m"
 # define RED "\033[0;31m"
@@ -28,6 +30,7 @@ class Server {
         void acceptNewConnection();
         static void signalHandler(int signum);
         void handleClientData(int clientFd);
+        void handleClientOutput(int clientFd);
         void removeClientFd(int clientFd);
         void closeServer();
     private:

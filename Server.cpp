@@ -57,8 +57,11 @@ Server::Server(int port, const std::string& password): port(port), password(pass
 Server::~Server()
 {
     if (serverSocket != -1)
+    {
         close(serverSocket); // Close the server socket if it's open
-}
+        serverSocket = -1;
+    }
+}   
 
 void Server::removeClientFd(int clientFd)
 {
@@ -125,6 +128,21 @@ void Server::handleClientData(int clientFd)
 {
     char buffer[1024];
     ssize_t bytesRead;
+    Client *client = NULL;
+
+    for (size_t i = 0; i < clientList.size(); i++)
+    {
+        if (clientList[i].getFd() == clientFd)
+        {
+            client = &clientList[i];
+            break;
+        }
+    }
+    if (client == NULL)
+    {
+        std::cerr << RED << "Client not found for fd: " << clientFd << RESET << std::endl;
+        return ;
+    }
 
     bytesRead = recv(clientFd, buffer, sizeof(buffer) - 1, 0);
     if (bytesRead == -1)
@@ -138,10 +156,44 @@ void Server::handleClientData(int clientFd)
         close(clientFd);
         removeClientFd(clientFd);
     }
-    else
+    else // Data received from client
     {
-        buffer[bytesRead] = '\0'; // Null-terminate the buffer to make it a valid C-string
-        std::cout << "Received from client " << clientFd << ": " << buffer << std::endl;
+        client->appendInputBuffer(std::string(buffer, bytesRead));
+        while (client->hasCompleteLine())
+        {
+            std::string line = client->getCompleteLine();
+            std::cout << "Linea completa: " << line << std::endl;
+        }
+    }
+}
+
+void Server::handleClientOutput(int clientFd)
+{
+    Client *client = NULL;
+
+    for (size_t i = 0; i < clientList.size(); i++)
+    {
+        if (clientList[i].getFd() == clientFd)
+        {
+            client = &clientList[i];
+            break;
+        }
+    }
+    if (client == NULL)
+    {
+        std::cerr << RED << "Client not found for fd: " << clientFd << RESET << std::endl;
+        return ;
+    }
+
+    if (!client->getOutputBuffer().empty())
+    {
+        ssize_t bytesSent = send(clientFd, client->getOutputBuffer().c_str(), client->getOutputBuffer().size(), 0);
+        if (bytesSent == -1)
+        {
+            std::cerr << "Error sending to client " << clientFd << ": " << strerror(errno) << std::endl;
+            return ;
+        }
+        client->removeOutputBuffer(static_cast<size_t>(bytesSent)); // Remove the sent data from the output buffer
     }
 }
 
@@ -168,6 +220,10 @@ void Server::runServer()
                     acceptNewConnection(); // Accept the new connection
                 else // There's data to read from an existing client socket
                     handleClientData(pollFds[i].fd); // Handle the data from the client
+            }
+            if (pollFds[i].revents & POLLOUT)
+            {
+                handleClientOutput(pollFds[i].fd);
             }
         }
     }
