@@ -9,6 +9,16 @@ void Server::signalHandler(int signum)
     Server::stopFlag = 1;
 }
 
+Client *Server::getClient(int clientFd)
+{
+    for (size_t i = 0; i < clientList.size(); i++)
+    {
+        if (clientList[i].getFd() == clientFd)
+            return &clientList[i];
+    }
+    return NULL;
+}
+
 Server::Server(int port, const std::string& password): port(port), password(password)
 {
     int reuseAddress = 1;
@@ -56,11 +66,7 @@ Server::Server(int port, const std::string& password): port(port), password(pass
 
 Server::~Server()
 {
-    if (serverSocket != -1)
-    {
-        close(serverSocket); // Close the server socket if it's open
-        serverSocket = -1;
-    }
+    closeServer();
 }   
 
 void Server::removeClientFd(int clientFd)
@@ -94,7 +100,10 @@ void Server::closeServer()
     {
         close(serverSocket);
         std::cout << RED << "[ Server socket closed ]" << RESET << std::endl;
+        serverSocket = -1;
     }
+    clientList.clear();
+    pollFds.clear();
 }
 
 void Server::acceptNewConnection()
@@ -107,10 +116,22 @@ void Server::acceptNewConnection()
 
     clientFd = accept(serverSocket, (struct sockaddr *) &clientAddress, &clientAddressLen);
     if (clientFd == -1)
-        throw std::runtime_error("Failed to accept new connection");
+    {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) // No pending connections; this is not an error
+            return ;
+
+        if (errno == EINTR) // The accept call was interrupted by a signal; this is not an error
+            return ;
+
+        std::cerr << RED << "Error accepting new connection: " << strerror(errno) << RESET << std::endl;
+        return ;
+    }
 
     if (fcntl(clientFd, F_SETFL, O_NONBLOCK) == -1) // All connections are set to non-blocking
+    {
+        close(clientFd);
         throw std::runtime_error("Failed to set client socket to non-blocking mode");
+    }
 
     pollFd.fd = clientFd; // Set the file descriptor to the client socket
     pollFd.events = POLLIN; // Set the events to listen for incoming data
@@ -162,7 +183,28 @@ void Server::handleClientData(int clientFd)
         while (client->hasCompleteLine())
         {
             std::string line = client->getCompleteLine();
-            std::cout << "Linea completa: " << line << std::endl;
+            std::cout << "Received from client " << clientFd << ": " << line << std::endl;
+            // CARLOS: Aqui habría que parsear la línea y generar la respuesta
+        }
+    }
+}
+
+void Server::queueClientOutput(int clientFd, const std::string &message) // Function to send a message to a client
+{
+    for (size_t i = 0; i < clientList.size(); i++)
+    {
+        if (clientList[i].getFd() == clientFd)
+        {
+            clientList[i].appendOutputBuffer(message);
+
+            for (size_t j = 0; j < pollFds.size(); j++)
+            {
+                if (pollFds[j].fd == clientFd)
+                {
+                    pollFds[j].events |= POLLOUT; // Activate POLLOUT to indicate that there's data to send
+                    return ;
+                }
+            }
         }
     }
 }
@@ -191,9 +233,22 @@ void Server::handleClientOutput(int clientFd)
         if (bytesSent == -1)
         {
             std::cerr << "Error sending to client " << clientFd << ": " << strerror(errno) << std::endl;
+            close(clientFd);
+            removeClientFd(clientFd);
             return ;
         }
         client->removeOutputBuffer(static_cast<size_t>(bytesSent)); // Remove the sent data from the output buffer
+        if (client->getOutputBuffer().empty())
+        {
+            for (size_t i = 0; i < pollFds.size(); i++)
+            {
+                if (pollFds[i].fd == clientFd)
+                {
+                    pollFds[i].events &= ~POLLOUT; // Stop listening for POLLOUT events if there's no more data to send
+                    break;
+                }
+            }
+        }
     }
 }
 
@@ -211,21 +266,61 @@ void Server::runServer()
                 continue;
             throw std::runtime_error("Poll failed");
         }
-
-        for (int i = 0; i < int(pollFds.size()); i++)
+        for (size_t i = 0; i < pollFds.size();)
         {
-            if (pollFds[i].revents & POLLIN)
+            pollfd readyPollFd = pollFds[i];
+
+            if (readyPollFd.revents & (POLLHUP | POLLERR | POLLNVAL))
             {
-                if (pollFds[i].fd == serverSocket) // There's a new incoming connection on the server socket
-                    acceptNewConnection(); // Accept the new connection
-                else // There's data to read from an existing client socket
-                    handleClientData(pollFds[i].fd); // Handle the data from the client
+                if (readyPollFd.fd == serverSocket)
+                {
+                    std::cerr << RED << "Fatal error on server socket" << RESET << std::endl;
+                    stopFlag = 1;
+                    break;
+                }
+                close(readyPollFd.fd);
+                removeClientFd(readyPollFd.fd);
             }
-            if (pollFds[i].revents & POLLOUT)
+            else
             {
-                handleClientOutput(pollFds[i].fd);
+                if (readyPollFd.revents & POLLIN)
+                {
+                    if (readyPollFd.fd == serverSocket)
+                        acceptNewConnection();
+                    else
+                        handleClientData(readyPollFd.fd);
+                }
+
+                bool stillPresent = false;
+
+                for (size_t j = 0; j < pollFds.size(); j++)
+                {
+                    if (pollFds[j].fd == readyPollFd.fd)
+                    {
+                        stillPresent = true;
+                        break;
+                    }
+                }
+
+                if (stillPresent && (readyPollFd.revents & POLLOUT))
+                    handleClientOutput(readyPollFd.fd);
             }
+
+            bool stillPresent = false;
+
+            for (size_t j = 0; j < pollFds.size(); j++)
+            {
+                if (pollFds[j].fd == readyPollFd.fd)
+                {
+                    stillPresent = true;
+                    break;
+                }
+            }
+
+            if (stillPresent)
+                i++;
         }
     }
     closeServer();
 }
+

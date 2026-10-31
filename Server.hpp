@@ -32,7 +32,9 @@ class Server {
         void handleClientData(int clientFd);
         void handleClientOutput(int clientFd);
         void removeClientFd(int clientFd);
+        void queueClientOutput(int clientFd, const std::string &message);
         void closeServer();
+        Client *getClient(int clientFd);
     private:
         int port;
         int serverSocket;

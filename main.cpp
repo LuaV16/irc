@@ -34,6 +34,7 @@ int main(int argc, char *argv[])
         Server server(atoi(argv[1]), argv[2]);
         signal(SIGINT, Server::signalHandler);
         signal(SIGQUIT, Server::signalHandler);
+        signal(SIGPIPE, SIG_IGN); // Ignore SIGPIPE so the server doesn't crash when trying to write to a closed socket
         server.runServer();
     }
     catch (const std::exception &e)
