@@ -1,5 +1,18 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   Server.cpp                                         :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: cdaureo- <cdaureo-@student.42madrid.com    +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2026/11/17 17:33:37 by cdaureo-          #+#    #+#             */
+/*   Updated: 2026/11/17 18:02:28 by cdaureo-         ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
 #include "Server.hpp"
 #include "Client.hpp"
+#include "irc/parser.hpp"
 
 volatile sig_atomic_t Server::stopFlag = 0;
 
@@ -166,6 +179,7 @@ void Server::handleClientData(int clientFd)
     }
 
     bytesRead = recv(clientFd, buffer, sizeof(buffer) - 1, 0);
+    std::cerr << "[DEBUG] bytes recibidos: " << bytesRead << std::endl;
     if (bytesRead == -1)
     {
         std::cerr << "Error reading from client " << clientFd << ": " << strerror(errno) << std::endl;
@@ -180,11 +194,37 @@ void Server::handleClientData(int clientFd)
     else // Data received from client
     {
         client->appendInputBuffer(std::string(buffer, bytesRead));
+          std::cerr << "[DEBUG] linea completa: "
+            << client->hasCompleteLine() << std::endl;
         while (client->hasCompleteLine())
         {
             std::string line = client->getCompleteLine();
-            std::cout << "Received from client " << clientFd << ": " << line << std::endl;
-            // CARLOS: Aqui habría que parsear la línea y generar la respuesta
+            IrcMessage message;
+            bool parsed = parseLine(line, message);
+            /**
+            *    std::cerr << "[DEBUG] parser: " << parsed 
+            *    << " Destinatario, " << message.params[0]
+            *    << ", comando: [" << message.command << "]"
+            *    << ", parametros: " << message.params.size()
+            *    << std::endl;
+            **/
+            //Ignora lineas vacias
+            if (!parsed)
+                continue;
+            if(message.command == "PING")
+            {
+                if (message.params.empty() || message.params[0].empty())
+                {
+                    queueClientOutput(
+                     clientFd,
+                     ":ircserv 409 * :No origin specified\r\n");
+                    continue;
+                }
+                    queueClientOutput(
+                    clientFd,
+                    ":ircserv PONG ircserv :" + message.params[0] + "\r\n"
+          );
+            }
         }
     }
 }
@@ -212,6 +252,8 @@ void Server::queueClientOutput(int clientFd, const std::string &message) // Func
 void Server::handleClientOutput(int clientFd)
 {
     Client *client = NULL;
+    std::cerr << "[DEBUG] entrando en handleClientOutput"
+                << std::endl;
 
     for (size_t i = 0; i < clientList.size(); i++)
     {

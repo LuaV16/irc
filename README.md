@@ -6,17 +6,16 @@ Mi parte del proyecto cubre el estado de cada cliente, la autenticación, el par
 
 ## Dónde empezar en el repositorio
 
-- [`Client.hpp`](https://github.com/LuaV16/irc/blob/658b72196eec3c998df8112500bf60db4195da9c/Client.hpp) y [`Client.cpp`](https://github.com/LuaV16/irc/blob/658b72196eec3c998df8112500bf60db4195da9c/Client.cpp) ya guardan los búferes de entrada y salida de cada cliente. `getCompleteLine()` extrae una línea completa y le quita el `\r\n`.
+- [`Client.hpp`] y [`Client.cpp`] ya guardan los búferes de entrada y salida de cada cliente. `getCompleteLine()` extrae una línea completa y le quita el `\r\n`.
 - [`Server::handleClientData()`] ya recorre las líneas completas. El comentario `CARLOS` marca el punto donde tengo que llamar al parser.
 - [`Server::queueClientOutput()`] es la función que uso para encolar las respuestas. Cada mensaje IRC que le pase debe terminar en `\r\n`.
 - [`Makefile`] compila con C++98. Si añado un archivo `.cpp`, tengo que incluirlo en `SRC`.
 
 ## 1. Parser y `PING`
 
-- [ ] Crear mi rama desde `main`.
-- [ ] Hacer un parser que reciba una línea completa y devuelva el comando y sus parámetros.
-- [ ] Conservar como un solo parámetro el texto que empieza después del `:` que introduce el parámetro final, incluidos sus espacios.
-- [ ] Conectar el parser en `handleClientData()` y responder a `PING` mediante `queueClientOutput()`.
+- [✅] Hacer un parser que reciba una línea completa y devuelva el comando y sus parámetros.
+- [✅] Conservar como un solo parámetro el texto que empieza después del `:` que introduce el parámetro final, incluidos sus espacios.
+- [✅] Conectar el parser en `handleClientData()` y responder a `PING` mediante `queueClientOutput()`.
 
 **Ejemplo para probar el parser**
 

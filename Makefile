@@ -1,9 +1,10 @@
 NAME = ircserv
 
-SRC = main.cpp Server.cpp Client.cpp
+SRC = main.cpp Server.cpp Client.cpp src/parser/parser.cpp
 
 OBJ := $(SRC:%.cpp=%.o)
 
+CPPFLAGS = -Iinclude
 CXX = c++
 CXXFLAGS = -Wall -Wextra -Werror -std=c++98
 
@@ -13,7 +14,7 @@ $(NAME): $(OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $(OBJ)
 
 %.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 clean:
 	rm -f $(OBJ)
